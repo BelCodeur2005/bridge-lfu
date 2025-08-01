@@ -1,6 +1,6 @@
 'use client'
 
-import { useDashboard, useAuthPermissions, useEquipmentStats, useLicenseStats, useStablePermissions } from '@/hooks'
+import { useDashboard, useAuthPermissions, useEquipmentStats, useLicenseStats } from '@/hooks'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -24,9 +24,7 @@ import {
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar } from 'recharts'
-import { useEffect, useMemo } from 'react'
-
-
+import { useEffect, useMemo, useState } from 'react'
 
 interface StatCardProps {
   title: string
@@ -199,32 +197,24 @@ function ChartCard({ title, children, className = "" }: { title: string; childre
   )
 }
 
-// Dans votre composant Dashboard
 export default function DashboardPage() {
-  // Utilisation des hooks stabilisés
   const { stats, alerts, loading, error } = useDashboard()
   const { stats: equipmentStats, loading: equipmentLoading } = useEquipmentStats()
   const { stats: licenseStats, loading: licenseLoading } = useLicenseStats()
-    const { refetch } = useDashboard();
-
-  // Alternative : Utiliser le hook de permissions stabilisé
-  const stablePermissions = useStablePermissions()
-// useEffect(() => {
-//     refetch()
-
-// }, [])
-
-  // Les données ne vont plus disparaître !
-  console.log('Dashboard stats:', stats);
-  console.log('Equipment stats:', equipmentStats);
-  console.log('License stats:', licenseStats);
-
-  // Affichage conditionnel plus stable
-  const showCharts = useMemo(() => 
-    !loading && !equipmentLoading && !licenseLoading, 
-    [loading, equipmentLoading, licenseLoading]
-  )
-
+  const permissions = useAuthPermissions()
+  // Utilisez useMemo pour stabiliser les valeurs
+  const canViewAllData = useMemo(() => permissions.canViewAllData(), [permissions]);
+  const isLoading = useMemo(() => 
+    loading || (canViewAllData && (licenseLoading || equipmentLoading)),
+    [loading, canViewAllData, licenseLoading, equipmentLoading]
+  );
+   // Nouvel état pour suivre si les données ont été chargées
+  const [dataLoaded, setDataLoaded] = useState(false);
+    useEffect(() => {
+    if (!isLoading && stats && (!canViewAllData || (equipmentStats && licenseStats))) {
+      setDataLoaded(true);
+    }
+  }, [isLoading, stats, canViewAllData, equipmentStats, licenseStats]);
   if (error) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -237,27 +227,30 @@ export default function DashboardPage() {
     )
   }
 
+  // const canViewAllData = permissions.canViewAllData()
+  console.log('Can view all data:', canViewAllData);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Tableau de bord</h1>
         <p className="text-gray-600 mt-2">
-          Vue d&apos;ensemble de votre {stablePermissions.canViewAllData ? 'plateforme' : 'compte'}
+          Vue d&apos;ensemble de votre {canViewAllData ? 'plateforme' : 'compte'}
         </p>
       </div>
 
       {/* Loading State */}
-      {loading && (
+      {isLoading && !dataLoaded && (
         <div className="flex items-center justify-center min-h-96">
           <LoadingSpinner size="lg" />
         </div>
       )}
 
-      {/* Stats Grid - STABILISÉ */}
-      {!loading && stats && (
+      {/* Stats Grid */}
+      {dataLoaded && stats && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stablePermissions.canViewAllData && (
+          {canViewAllData && (
             <StatCard
               title="Total Clients"
               value={stats.total_clients}
@@ -296,11 +289,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Charts Section - STABILISÉ */}
-      {showCharts && (
+      {/* Charts Section */}
+      {dataLoaded && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Equipment Chart */}
-          {equipmentStats && equipmentStats.chartData.types.length > 0 && (
+          {equipmentStats?.chartData && (
             <ChartCard title="Répartition des Équipements par Type">
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
@@ -314,9 +307,13 @@ export default function DashboardPage() {
                     fill="#8884d8"
                     dataKey="value"
                   >
+                    {/* {equipmentStats.chartData.types.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))} */}
                     {equipmentStats.chartData.types.map((_, index: number) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
+
                   </Pie>
                   <Tooltip />
                 </PieChart>
@@ -325,7 +322,7 @@ export default function DashboardPage() {
           )}
 
           {/* License Status Chart */}
-          {licenseStats && licenseStats.chartData.statuses.length > 0 && (
+          {licenseStats?.chartData && (
             <ChartCard title="Statut des Licences">
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={licenseStats.chartData.statuses}>
@@ -340,7 +337,7 @@ export default function DashboardPage() {
           )}
 
           {/* Equipment Status Chart */}
-          {equipmentStats && equipmentStats.chartData.statuses.length > 0 && (
+          {equipmentStats && (
             <ChartCard title="Statut des Équipements">
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={equipmentStats.chartData.statuses}>
@@ -355,7 +352,7 @@ export default function DashboardPage() {
           )}
 
           {/* License Expiry Trend */}
-          {licenseStats && licenseStats.chartData.expiry && licenseStats.chartData.expiry.length > 0 && (
+          {licenseStats && licenseStats.chartData.expiry.length > 0 && (
             <ChartCard title="Évolution des Expirations de Licences">
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={licenseStats.chartData.expiry}>
@@ -378,204 +375,201 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Reste du composant... */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-  {/* Alerts - STABILISÉ */}
-  <div className="lg:col-span-2">
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg font-semibold text-gray-900">
-          Alertes Récentes
-          {alerts.length > 0 && (
-            <Badge variant="destructive" className="ml-2">
-              {alerts.length}
-            </Badge>
+        {/* Alerts */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg font-semibold text-gray-900">
+                Alertes Récentes
+                {alerts.length > 0 && (
+                  <Badge variant="destructive" className="ml-2">
+                    {alerts.length}
+                  </Badge>
+                )}
+              </CardTitle>
+              <Link
+                href="/dashboard/notifications"
+                className="text-sm text-blue-600 hover:text-blue-500 font-medium flex items-center"
+              >
+                Voir tout
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Link>
+            </CardHeader>
+            <CardContent className="p-0">
+              {alerts.length > 0 ? (
+                <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+                  
+                  {alerts
+                    .filter((alert: { item_name: unknown }) => alert.item_name) // ← on ignore celles sans item_name
+                    .slice(0, 8)
+                    .map((alert: { id: string; item_name?: string; client_name?: string | undefined; type?: string; alert_type?: string; alert_level?: string; alert_date?: string; status?: string },index) => (
+                      <AlertItem key={`${alert.id}-${index}`} alert={alert as AlertItemProps['alert']} />
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-gray-500">
+                  <CheckCircle className="h-12 w-12 mx-auto text-green-300 mb-4" />
+                  <p className="text-lg font-medium text-gray-900 mb-2">Tout va bien !</p>
+                  <p>Aucune alerte critique à signaler</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Actions & Stats */}
+        <div className="space-y-6">
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900">
+                Actions Rapides
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {permissions.can('create', 'clients') && (
+                <Link
+                  href="/dashboard/clients/new"
+                  className="flex items-center justify-between p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors group"
+                >
+                  <div className="flex items-center">
+                    <Users className="h-5 w-5 text-blue-600 mr-3" />
+                    <span className="text-sm font-medium text-blue-900">
+                      Nouveau Client
+                    </span>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-blue-600 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              )}
+              
+              {permissions.can('create', 'licenses') && (
+                <Link
+                  href="/dashboard/licenses/new"
+                  className="flex items-center justify-between p-3 bg-green-50 rounded-lg hover:bg-green-100 transition-colors group"
+                >
+                  <div className="flex items-center">
+                    <Shield className="h-5 w-5 text-green-600 mr-3" />
+                    <span className="text-sm font-medium text-green-900">
+                      Nouvelle Licence
+                    </span>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-green-600 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              )}
+              
+              {permissions.can('create', 'equipment') && (
+                <Link
+                  href="/dashboard/equipment/new"
+                  className="flex items-center justify-between p-3 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors group"
+                >
+                  <div className="flex items-center">
+                    <Server className="h-5 w-5 text-purple-600 mr-3" />
+                    <span className="text-sm font-medium text-purple-900">
+                      Nouvel Équipement
+                    </span>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-purple-600 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              )}
+              
+              {permissions.can('read', 'reports') && (
+                <Link
+                  href="/dashboard/reports"
+                  className="flex items-center justify-between p-3 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors group"
+                >
+                  <div className="flex items-center">
+                    <Calendar className="h-5 w-5 text-orange-600 mr-3" />
+                    <span className="text-sm font-medium text-orange-900">
+                      Générer un Rapport
+                    </span>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-orange-600 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Performance Metrics for Admins */}
+          {canViewAllData && stats && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                  <Activity className="h-5 w-5 mr-2 text-blue-600" />
+                  Métriques Système
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Uptime</span>
+                  <Badge variant="secondary" className="bg-green-100 text-green-800">
+                    99.9%
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Utilisateurs actifs</span>
+                  <Badge variant="secondary">
+                    {Math.floor(Math.random() * 50) + 10}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Temps de réponse</span>
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                    &lt; 200ms
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </CardTitle>
-        <Link
-          href="/dashboard/notifications"
-          className="text-sm text-blue-600 hover:text-blue-500 font-medium flex items-center"
-        >
-          Voir tout
-          <ArrowRight className="h-4 w-4 ml-1" />
-        </Link>
-      </CardHeader>
-      <CardContent className="p-0">
-        {alerts.length > 0 ? (
-          <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
-            {alerts
-              .filter((alert) => alert.item_name) // Filtrage stabilisé
-              .slice(0, 8)
-              .map((alert, index) => (
-                <AlertItem 
-                  key={`alert-${alert.id}-${index}`} // Clé plus stable
-                  alert={alert} 
-                />
-              ))}
-          </div>
-        ) : (
-          <div className="p-6 text-center text-gray-500">
-            <CheckCircle className="h-12 w-12 mx-auto text-green-300 mb-4" />
-            <p className="text-lg font-medium text-gray-900 mb-2">Tout va bien !</p>
-            <p>Aucune alerte critique à signaler</p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  </div>
 
-  {/* Quick Actions & Stats - STABILISÉ */}
-  <div className="space-y-6">
-    {/* Quick Actions - Mémoïsé */}
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg font-semibold text-gray-900">
-          Actions Rapides
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {stablePermissions.can('create', 'clients') && (
-          <Link
-            href="/dashboard/clients/new"
-            className="flex items-center justify-between p-3 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors group"
-          >
-            <div className="flex items-center">
-              <Users className="h-5 w-5 text-blue-600 mr-3" />
-              <span className="text-sm font-medium text-blue-900">
-                Nouveau Client
-              </span>
-            </div>
-            <ArrowRight className="h-4 w-4 text-blue-600 group-hover:translate-x-1 transition-transform" />
-          </Link>
-        )}
-        
-        {stablePermissions.can('create', 'licenses') && (
-          <Link
-            href="/dashboard/licenses/new"
-            className="flex items-center justify-between p-3 bg-green-50 rounded-lg hover:bg-green-100 transition-colors group"
-          >
-            <div className="flex items-center">
-              <Shield className="h-5 w-5 text-green-600 mr-3" />
-              <span className="text-sm font-medium text-green-900">
-                Nouvelle Licence
-              </span>
-            </div>
-            <ArrowRight className="h-4 w-4 text-green-600 group-hover:translate-x-1 transition-transform" />
-          </Link>
-        )}
-        
-        {stablePermissions.can('create', 'equipment') && (
-          <Link
-            href="/dashboard/equipment/new"
-            className="flex items-center justify-between p-3 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors group"
-          >
-            <div className="flex items-center">
-              <Server className="h-5 w-5 text-purple-600 mr-3" />
-              <span className="text-sm font-medium text-purple-900">
-                Nouvel Équipement
-              </span>
-            </div>
-            <ArrowRight className="h-4 w-4 text-purple-600 group-hover:translate-x-1 transition-transform" />
-          </Link>
-        )}
-        
-        {stablePermissions.can('read', 'reports') && (
-          <Link
-            href="/dashboard/reports"
-            className="flex items-center justify-between p-3 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors group"
-          >
-            <div className="flex items-center">
-              <Calendar className="h-5 w-5 text-orange-600 mr-3" />
-              <span className="text-sm font-medium text-orange-900">
-                Générer un Rapport
-              </span>
-            </div>
-            <ArrowRight className="h-4 w-4 text-orange-600 group-hover:translate-x-1 transition-transform" />
-          </Link>
-        )}
-      </CardContent>
-    </Card>
-
-    {/* Performance Metrics for Admins - STABILISÉ */}
-    {stablePermissions.canViewAllData && stats && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
-            <Activity className="h-5 w-5 mr-2 text-blue-600" />
-            Métriques Système
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Uptime</span>
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
-              99.9%
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Utilisateurs actifs</span>
-            <Badge variant="secondary">
-              {Math.floor(Math.random() * 50) + 10}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Temps de réponse</span>
-            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-              &lt; 200ms
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-    )}
-
-    {/* Quick Stats for Clients - STABILISÉ */}
-    {!stablePermissions.canViewAllData && stats && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold text-gray-900">
-            Mes Données
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-            <div className="flex items-center">
-              <Shield className="h-5 w-5 text-blue-600 mr-3" />
-              <span className="text-sm font-medium text-blue-900">Licences</span>
-            </div>
-            <Badge variant="secondary">{stats.total_licenses}</Badge>
-          </div>
-          <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-            <div className="flex items-center">
-              <Server className="h-5 w-5 text-purple-600 mr-3" />
-              <span className="text-sm font-medium text-purple-900">Équipements</span>
-            </div>
-            <Badge variant="secondary">{stats.total_equipment}</Badge>
-          </div>
-          <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
-            <div className="flex items-center">
-              <AlertTriangle className="h-5 w-5 text-orange-600 mr-3" />
-              <span className="text-sm font-medium text-orange-900">Alertes</span>
-            </div>
-            <Badge variant={alerts.length > 0 ? "destructive" : "secondary"}>
-              {alerts.length}
-            </Badge>
-          </div>
-          {licenseStats && (
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-              <div className="flex items-center">
-                <DollarSign className="h-5 w-5 text-green-600 mr-3" />
-                <span className="text-sm font-medium text-green-900">Valeur totale</span>
-              </div>
-              <Badge variant="secondary">
-                {licenseStats.totalValue.toLocaleString()} FCFA
-              </Badge>
-            </div>
+          {/* Quick Stats for Clients */}
+          {!canViewAllData && stats && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold text-gray-900">
+                  Mes Données
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                  <div className="flex items-center">
+                    <Shield className="h-5 w-5 text-blue-600 mr-3" />
+                    <span className="text-sm font-medium text-blue-900">Licences</span>
+                  </div>
+                  <Badge variant="secondary">{stats.total_licenses}</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                  <div className="flex items-center">
+                    <Server className="h-5 w-5 text-purple-600 mr-3" />
+                    <span className="text-sm font-medium text-purple-900">Équipements</span>
+                  </div>
+                  <Badge variant="secondary">{stats.total_equipment}</Badge>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                  <div className="flex items-center">
+                    <AlertTriangle className="h-5 w-5 text-orange-600 mr-3" />
+                    <span className="text-sm font-medium text-orange-900">Alertes</span>
+                  </div>
+                  <Badge variant={alerts.length > 0 ? "destructive" : "secondary"}>
+                    {alerts.length}
+                  </Badge>
+                </div>
+                {licenseStats && (
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <div className="flex items-center">
+                      <DollarSign className="h-5 w-5 text-green-600 mr-3" />
+                      <span className="text-sm font-medium text-green-900">Valeur totale</span>
+                    </div>
+                    <Badge variant="secondary">
+                      {licenseStats.totalValue.toLocaleString()} €
+                    </Badge>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
-    )}
-  </div>
-</div>
+        </div>
+      </div>
     </div>
   )
 }

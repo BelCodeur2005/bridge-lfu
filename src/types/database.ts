@@ -323,7 +323,7 @@ export type Database = {
           created_by: string | null
           description: string | null
           editor: string | null
-          expiry_date: string
+          expiry_date: string| null
           id: string
           license_key: string | null
           name: string
@@ -768,8 +768,8 @@ export type Database = {
         | "imprimante"
         | "autre"
       license_status: "active" | "expired" | "about_to_expire" | "cancelled"
-      notification_type: "license_expiry" | "equipment_obsolescence" | "general"
-      user_role: "admin" | "technicien" | "client"
+      notification_type: "license_expiry" | "equipment_obsolescence" | "general" | "new_unverified_user"
+      user_role: "admin" | "technicien" | "client" | "unverified"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -916,9 +916,10 @@ export const Constants = {
       notification_type: [
         "license_expiry",
         "equipment_obsolescence",
+        "new_unverified_user",
         "general",
       ],
-      user_role: ["admin", "technicien", "client"],
+      user_role: ["admin", "technicien", "client","unverified"],
     },
   },
 } as const
