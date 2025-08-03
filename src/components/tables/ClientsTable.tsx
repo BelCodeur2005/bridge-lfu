@@ -22,8 +22,6 @@ import { Badge } from '@/components/ui/badge'
 import { useAuthPermissions } from '@/hooks'
 import type { Client } from '@/types'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
-import { deleteClient } from '@/lib/supabase/client'
 
 interface ClientsTableProps {
   clients: Client[] | undefined
@@ -34,20 +32,11 @@ export function ClientsTable({ clients }: ClientsTableProps) {
   const queryClient = useQueryClient()
 
   const deleteClientMutation = useMutation({
-    mutationFn: (clientId: string) => deleteClient(clientId),
-    onSuccess: () => {
-      toast.success("Le client a été supprimé avec succès.")
-      queryClient.invalidateQueries({ queryKey: ['clients'] })
-    },
-    onError: (error) => {
-      toast.error("Une erreur est survenue lors de la suppression du client.")
-    },
+
   })
 
   const handleDelete = (clientId: string) => {
-    if (window.confirm("Êtes-vous sûr de vouloir supprimer ce client ?")) {
-      deleteClientMutation.mutate(clientId)
-    }
+
   }
 
   const getInitials = (name: string) => {
