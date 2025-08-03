@@ -710,8 +710,10 @@ const fetchClients = async (
     query = query.eq('sector', params.sector);
   }
   // Pagination
-  const from = (params.page - 1) * params.limit;
-  const to = from + params.limit - 1;
+  const limit = params.limit ?? 10; // par défaut 10 éléments par page
+  const page = params.page ?? 1; 
+ const from = (page - 1) * limit;
+  const to = from + limit - 1;
 
   const { data, count, error } = await query
     .order('name', { ascending: true })
@@ -721,7 +723,14 @@ const fetchClients = async (
     throw new Error(error.message);
   }
 
-  return { data: data as Client[], count: count ?? 0 };
+  // return { data: data as Client[], count: count ?? 0 };
+  return {
+  data: data as Client[],
+  count: count ?? 0,
+  page,
+  limit,
+  total_pages: count ? Math.ceil(count / limit) : 0,
+  };
 };
 
 // NOUVEAU : Hook useClients

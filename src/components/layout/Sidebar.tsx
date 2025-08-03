@@ -92,6 +92,7 @@ const isActiveRoute = (href: string) => {
     // }
     // return pathname.startsWith(href)
     // }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const canAccessRoute = (item: any) => {
     if (!item.permissions) return true
     return permissions.can(item.permissions.action, item.permissions.resource)
